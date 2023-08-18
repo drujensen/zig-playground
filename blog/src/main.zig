@@ -7,9 +7,6 @@ const server_port = 3000;
 
 // Handle an individual request.
 fn handleRequest(response: *http.Server.Response, allocator: std.mem.Allocator) !void {
-    // Log the request details.
-    log.info("{s} {s} {s}", .{ @tagName(response.request.method), @tagName(response.request.version), response.request.target });
-
     // Read the request body.
     const body = try response.reader().readAllAlloc(allocator, 8192);
     defer allocator.free(body);
@@ -20,10 +17,11 @@ fn handleRequest(response: *http.Server.Response, allocator: std.mem.Allocator) 
     }
 
     // Check if the request target starts with "/get".
-    if (std.mem.startsWith(u8, response.request.target, "/")) {
+    if (std.mem.eql(u8, response.request.target, "/")) {
         const responseBody = "<html><body><h1>Hello, world!</h1></body></html>";
         response.transfer_encoding = .{ .content_length = responseBody.len };
         try response.headers.append("content-type", "text/html");
+        response.status = .ok;
         try response.do();
 
         // Write the response body.
@@ -34,8 +32,11 @@ fn handleRequest(response: *http.Server.Response, allocator: std.mem.Allocator) 
     } else {
         // Set the response status to 404 (not found).
         response.status = .not_found;
+        response.transfer_encoding = .{ .content_length = 0 };
         try response.do();
     }
+    // Log the request details.
+    log.info("{s} {s} {s} - {d}", .{ @tagName(response.request.method), @tagName(response.request.version), response.request.target, response.status });
 }
 
 // Run the server and handle incoming requests.
@@ -69,7 +70,7 @@ pub fn main() !void {
     var server = std.http.Server.init(allocator, .{ .reuse_address = true });
     defer server.deinit();
 
-    log.info("Listening on ip: {s}:{d}\n", .{ server_addr, server_port });
+    log.info("Server started: http://{s}:{d}\n", .{ server_addr, server_port });
 
     const address = std.net.Address.parseIp(server_addr, server_port) catch unreachable;
     try server.listen(address);
